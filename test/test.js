@@ -9,10 +9,15 @@ var vows = require('vows')
   , assert = require('assert')
   , _ = require('underscore')
 
+var parseFile = function(file) {
+  var content = fs.readFileSync(file, 'utf8');
+  return ical.parseICS(content);
+};
+
 vows.describe('node-ical').addBatch({
   'when parsing test1.ics (node conferences schedule from lanyrd.com, modified)': {
         topic: function () {
-      return ical.parseFile('./test/test1.ics')
+      return parseFile('./test/test1.ics')
     }
 
     ,'we get 9 events': function (topic) {
@@ -67,7 +72,7 @@ vows.describe('node-ical').addBatch({
   }
   , 'with test2.ics (testing ical features)' : {
     topic: function () {
-      return ical.parseFile('./test/test2.ics')
+      return parseFile('./test/test2.ics')
     }
     , 'todo item uid4@host1.com' : {
       topic : function(items){
@@ -80,7 +85,7 @@ vows.describe('node-ical').addBatch({
   }
   , 'with test3.ics (testing tvcountdown.com)' : {
     topic: function() {
-      return ical.parseFile('./test/test3.ics');
+      return parseFile('./test/test3.ics');
     }
     , 'event -83' : {
       topic: function(events) {
@@ -101,7 +106,7 @@ vows.describe('node-ical').addBatch({
 
   , 'with test4.ics (testing tripit.com)' : {
     topic: function() {
-      return ical.parseFile('./test/test4.ics');
+      return parseFile('./test/test4.ics');
     }
     , 'event c32a5...' : {
       topic: function(events) {
@@ -147,7 +152,7 @@ vows.describe('node-ical').addBatch({
 
   , 'with test5.ics (testing meetup.com)' : {
      topic: function () {
-        return ical.parseFile('./test/test5.ics')
+        return parseFile('./test/test5.ics')
       }
     , 'event nsmxnyppbfc@meetup.com' : {
       topic: function(events) {
@@ -164,7 +169,7 @@ vows.describe('node-ical').addBatch({
 
   , 'with test6.ics (testing assembly.org)' : {
      topic: function () {
-        return ical.parseFile('./test/test6.ics')
+        return parseFile('./test/test6.ics')
       }
     , 'event with no ID' : {
       topic: function(events) {
@@ -192,7 +197,7 @@ vows.describe('node-ical').addBatch({
   }
   , "with test 8.ics (VTODO completion)": {
     topic: function() {
-        return ical.parseFile('./test/test8.ics');
+        return parseFile('./test/test8.ics');
     },
     'grabbing VTODO task': {
         topic: function(topic) {
@@ -204,19 +209,4 @@ vows.describe('node-ical').addBatch({
         }
     }
   }
-  , 'url request errors' : {
-    topic : function () {
-      ical.fromURL('http://not.exist/', {}, this.callback);
-    }
-    , 'are passed back to the callback' : function (err, result) {
-      assert.instanceOf(err, Error);
-    }
-  }
 }).export(module)
-
-
-//ical.fromURL('http://lanyrd.com/topics/nodejs/nodejs.ics',
-//  {},
-//  function(err, data){
-//    console.log("OUT:", data)
-//  })

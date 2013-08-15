@@ -1,8 +1,8 @@
-module.exports = require('./ical')
+var ical = module.exports = require('./ical');
 
-var node = require('./node-ical')
+var rrule = require('rrule').RRule;
 
-// Copy node functions across to exports
-for (var i in node){
-  module.exports[i] = node[i]
-}  
+ical.objectHandlers['RRULE'] = function(val, params, curr, par, line) {
+  curr['rrule'] = rrule.fromString(line.replace('RRULE:', ''));
+  return curr;
+};
