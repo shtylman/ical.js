@@ -19,144 +19,147 @@ var text = function(t){
 var parseParams = function(p){
   var out = {}
   for (var i = 0; i<p.length; i++){
-    if (p[i].indexOf('=') > -1){
-      var segs = p[i].split('=')
-        , out = {}
-      if (segs.length == 2){
-        out[segs[0]] = segs[1]
-      }
+    if (p[i].indexOf('=') < 0) {
+      continue;
+    }
+    var segs = p[i].split('=')
+    var out = {}
+    if (segs.length == 2){
+      out[segs[0]] = segs[1]
     }
   }
   return out || sp
 }
 
 var storeParam = function(name){
-  return function(val, params, curr){
-    if (params && params.length && !(params.length==1 && params[0]==='CHARSET=utf-8')){
-      curr[name] = {params:params, val:text(val)}
+  return function(params, val, ctx){
+    if (params && params.length && !(params.length==1 && params[0]==='CHARSET=utf-8')) {
+      ctx[name] = { params:params, val:text(val) }
     }
-    else
-      curr[name] = text(val)
+    else {
+      ctx[name] = text(val)
+    }
 
-    return curr
+    return ctx
   }
 }
 
-var addTZ = function(dt, name, params){
-  var p = parseParams(params);
+var parse_datetime = module.exports.datetime = function(params, val) {
 
-  if (params && p){
-    dt[name].tz = p.TZID
-  }
-
-  return dt
-}
-
-
-var dateParam = function(name){
-  return function(val, params, curr){
-
-    // Store as string - worst case scenario
-    storeParam(name)(val, undefined, curr)
-
-    if (params && params[0] === "VALUE=DATE") {
-      // Just Date
-
+    // Just Date
+    if (params && params.VALUE === 'DATE') {
       var comps = /^(\d{4})(\d{2})(\d{2})$/.exec(val);
       if (comps !== null) {
-        // No TZ info - assume same timezone as this computer
-        curr[name] = new Date(
-          comps[1],
-          parseInt(comps[2], 10)-1,
-          comps[3]
-        );
 
-        return addTZ(curr, name, params);
+        var date = {
+          year: comps[1] - 0,
+          month: comps[2] - 0,
+          day: comps[3] - 0,
+          hour: 0,
+          minute: 0,
+          second: 0
+        };
+
+        if (params.TZID) {
+          date.tz = params.TZID
+        }
+
+        return date;
       }
     }
-
 
     //typical RFC date-time format
     var comps = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/.exec(val);
-    if (comps !== null) {
-      if (comps[7] == 'Z'){ // GMT
-        curr[name] = new Date(Date.UTC(
-          parseInt(comps[1], 10),
-          parseInt(comps[2], 10)-1,
-          parseInt(comps[3], 10),
-          parseInt(comps[4], 10),
-          parseInt(comps[5], 10),
-          parseInt(comps[6], 10 )
-        ));
-        // TODO add tz
-      } else {
-        curr[name] = new Date(
-          parseInt(comps[1], 10),
-          parseInt(comps[2], 10)-1,
-          parseInt(comps[3], 10),
-          parseInt(comps[4], 10),
-          parseInt(comps[5], 10),
-          parseInt(comps[6], 10)
-        );
-      }
+    if (comps === null) {
+      return undefined;
     }
 
-    return addTZ(curr, name, params)
-  }
-}
+    var date = {
+      year: comps[1] - 0,
+      month: comps[2] - 0,
+      day: comps[3] - 0,
+      hour: comps[4] - 0,
+      minute: comps[5] - 0,
+      second: comps[6] - 0
+    };
 
-
-var geoParam = function(name){
-  return function(val, params, curr){
-    storeParam(val, params, curr)
-    var parts = val.split(';');
-    curr[name] = {lat:Number(parts[0]), lon:Number(parts[1])};
-    return curr
-  }
-}
-
-
-
-exports.objectHandlers = {
-  'BEGIN' : function(component, params, curr){
-      if (component === 'VCALENDAR')
-        return curr;
-      return {type:component, params:params}
+    if (params && params.TZID) {
+      date.tz = params.TZID;
     }
 
-  , 'END' : function(component, params, curr, par){
-    if (curr.uid)
-      par[curr.uid] = curr
-    else
-      par[Math.random()*100000] = curr  // Randomly assign ID : TODO - use true GUID
+    return date;
+}
+
+var dateParam = function(name){
+  return function(params, val, ctx){
+    // Store as string - worst case scenario
+    storeParam(name)(undefined, val, ctx)
+
+    var date = parse_datetime(params, val);
+    if (date) {
+      ctx[name] = date;
+    }
+
+    return ctx;
+  }
+}
+
+// split a line into, name, params, value
+// this is run on every line
+module.exports.parse_line = function(str) {
+    var kv = str.split(":")
+
+    // Invalid line - must have k&v
+    if (kv.length < 2){
+      return null;
+    }
+
+    // Although the spec says that vals with colons should be quote wrapped
+    // in practise nobody does, so we assume further colons are part of the val
+    var value = kv.slice(1).join(":")
+    var kp = kv[0].split(";")
+    var params = parseParams(kp.slice(1));
+
+    return { name: kp[0], params: params, value: value };
+};
+
+module.exports.objectHandlers = {
+  BEGIN: function(params, value, ctx, calendar, line) {
+    if (value === 'VCALENDAR') {
+      return calendar;
+    }
+
+    var topic = {};
+    var arr = calendar[value] = calendar[value] || [];
+    arr.push(topic);
+
+    return topic;
+  },
+  END: function(params, value, ctx, calendar) {
+    return calendar;
+  },
+  DTSTART: dateParam('DTSTART'),
+  DTEND: dateParam('DTEND'),
+  COMPLETED: dateParam('COMPLETED')
+}
+
+exports.handleObject = function(name, params, value, ctx, calendar, line){
+  var handler = exports.objectHandlers[name];
+  if (handler) {
+    return handler(params, value, ctx, calendar, line);
   }
 
-  , 'SUMMARY' : storeParam('summary')
-  , 'DESCRIPTION' : storeParam('description')
-  , 'URL' : storeParam('url')
-  , 'UID' : storeParam('uid')
-  , 'LOCATION' : storeParam('location')
-  , 'DTSTART' : dateParam('start')
-  , 'DTEND' : dateParam('end')
-  ,' CLASS' : storeParam('class')
-  , 'TRANSP' : storeParam('transparency')
-  , 'GEO' : geoParam('geo')
-  , 'PERCENT-COMPLETE': storeParam('completion')
-  , 'COMPLETED': dateParam('completed')
+  return storeParam(name)(params, value, ctx);
 }
 
-exports.handleObject = function(name, val, params, stack, par, line){
-  if(exports.objectHandlers[name])
-    return exports.objectHandlers[name](val, params, stack, par, line)
-  return stack
-}
-
-
-
-exports.parseICS = function(str){
+exports.parseICS = function(str) {
   var lines = str.split(/\r?\n/)
-  var out = {}
-  var ctx = {}
+
+  var parse_line = module.exports.parse_line;
+
+  var calendar = {};
+  // context starts out as calendar
+  var ctx = calendar;
 
   for (var i = 0, ii = lines.length, l = lines[0]; i<ii; i++, l=lines[i]){
     //Unfold : RFC#3.1
@@ -165,23 +168,13 @@ exports.parseICS = function(str){
       i += 1
     }
 
-    var kv = l.split(":")
-
-    if (kv.length < 2){
-      // Invalid line - must have k&v
+    var obj = parse_line(l);
+    if (!obj) {
       continue;
     }
 
-    // Although the spec says that vals with colons should be quote wrapped
-    // in practise nobody does, so we assume further colons are part of the
-    // val
-    var value = kv.slice(1).join(":")
-      , kp = kv[0].split(";")
-      , name = kp[0]
-      , params = kp.slice(1)
-
-    ctx = exports.handleObject(name, value, params, ctx, out, l) || {}
+    ctx = exports.handleObject(obj.name, obj.params, obj.value, ctx, calendar, l) || {}
   }
 
-  return out
+  return calendar
 }
